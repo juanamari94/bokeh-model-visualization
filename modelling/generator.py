@@ -39,6 +39,28 @@ def generate_classifiers(train, test):
     return models
 
 
+def calculate_precision_and_recall(clf, features, labels, thresh):
+    metrics = clf.calculate_metrics_for_threshold(features, labels, threshold=thresh)
+    return pd.Series(metrics)
+
+
+def generate_daily_metrics(classifiers, test, label_col="label"):
+    best_thresholds = [
+        clf.best_threshold_for_scoring_func(test.drop(columns=[label_col]),
+                                            test[label_col])
+        for clf in classifiers]
+    metrics = {}
+    for clf, thresh in zip(classifiers, best_thresholds):
+        res = test.groupby(test.index).apply(
+            lambda x: calculate_precision_and_recall(clf,
+                                                     x.drop(columns=[label_col]),
+                                                     x[label_col],
+                                                     thresh)
+        )
+        metrics[clf.__name__] = pd.DataFrame(res)
+    return metrics
+
+
 def save(data, names, dest_dir):
     data_dict = {key: obj for key, obj in zip(names, data)}
     file_name = "modelling_data.pickle"
@@ -56,8 +78,10 @@ if __name__ == "__main__":
     train, test = generate_data(DATA_DIR, ";")
     logger.info("Assembling classifiers")
     models = generate_classifiers(train, test)
-    data = models + [train, test]
-    names = ["xgb_clf", "rf_clf", "train_data", "test_data"]
+    logger.info("Assembling daily metrics")
+    metrics = generate_daily_metrics(models, test, "label")
+    data = models + [train, test, metrics]
+    names = ["xgb_clf", "rf_clf", "train_data", "test_data", "daily_metrics"]
     dest_dir = os.path.join(os.getcwd(), "serialized_data")
     logger.info("Saving trained models and data")
     save(data, names, dest_dir)

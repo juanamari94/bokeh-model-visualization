@@ -15,8 +15,8 @@ SERIALIZED_DATA_PATH = os.path.join(os.path.dirname(__file__), "serialized_data"
 
 def main():
     loader = ModelLoader(SERIALIZED_DATA_PATH)
-    xgb_clf, rf_clf, train, test = loader.assemble_serialized_data().values()
-    dashboard = ManagementDashboard(xgb_clf, rf_clf, train, test)
+    xgb_clf, rf_clf, train, test, daily_metrics = loader.assemble_serialized_data().values()
+    dashboard = ManagementDashboard(xgb_clf, rf_clf, train, test, daily_metrics)
     dashboard.run()
 
 

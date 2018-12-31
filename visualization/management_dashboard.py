@@ -10,31 +10,8 @@ from dashboard import Dashboard
 
 class ManagementDashboard(Dashboard):
 
-    def __init__(self, xgb_clf, rf_clf, train, test):
-        super().__init__(xgb_clf, rf_clf, train, test)
-
-    @staticmethod
-    def calculate_precision_and_recall(clf, features, labels, thresh):
-        metrics = clf.calculate_metrics_for_threshold(features, labels, threshold=thresh)
-        return pd.Series(metrics)
-
-    def daily_metrics(self, label_col):
-        classifiers = [self.xgb_clf, self.rf_clf]
-
-        best_thresholds = [
-            clf.best_threshold_for_scoring_func(self.test.drop(columns=[label_col]),
-                                                self.test[label_col])
-            for clf in classifiers]
-        metrics = {}
-        for clf, thresh in zip(classifiers, best_thresholds):
-            res = self.test.groupby(self.test.index).apply(
-                lambda x: self.calculate_precision_and_recall(clf,
-                                                              x.drop(columns=[label_col]),
-                                                              x[label_col],
-                                                              thresh)
-            )
-            metrics[clf.__name__] = pd.DataFrame(res)
-        return metrics
+    def __init__(self, xgb_clf, rf_clf, train, test, daily_metrics):
+        super().__init__(xgb_clf, rf_clf, train, test, daily_metrics)
 
     def assemble_precision_recall_tab(self, source, metrics, model_dropdown, time_period_slider):
         precision_recall_f = figure(plot_width=700, plot_height=400, x_axis_type="datetime",
@@ -122,7 +99,7 @@ class ManagementDashboard(Dashboard):
             cumsum_source.data = ColumnDataSource.from_df(sample_size_cumsum)
 
         date_range_slider.on_change('value', update)
-
+        sample_size_f.legend.location = "bottom_right"
         return row(sample_size_f)
 
     def assemble_global_widgets(self):
@@ -141,7 +118,7 @@ class ManagementDashboard(Dashboard):
 
     def assemble_management_dashboard(self):
         model_dropdown, time_period_slider = self.assemble_global_widgets()
-        daily_metrics = self.daily_metrics("label")
+        daily_metrics = self.daily_metrics
         daily_metrics_source = ColumnDataSource(data=daily_metrics[self.xgb_clf.__name__])
         precision_recall_layout = self.assemble_precision_recall_tab(daily_metrics_source,
                                                                      daily_metrics,
