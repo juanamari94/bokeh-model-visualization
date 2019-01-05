@@ -5,13 +5,15 @@ from bokeh.models import ColumnDataSource
 from bokeh.models.widgets import Dropdown, DateRangeSlider, Panel, Tabs, DataTable, TableColumn, Div
 from bokeh.plotting import figure
 
-from dashboard import Dashboard
 
-
-class ManagementDashboard(Dashboard):
+class ManagementDashboard:
 
     def __init__(self, xgb_clf, rf_clf, train, test, daily_metrics):
-        super().__init__(xgb_clf, rf_clf, train, test, daily_metrics)
+        self.xgb_clf = xgb_clf
+        self.rf_clf = rf_clf
+        self.train = train
+        self.test = test
+        self.daily_metrics = daily_metrics
 
     def assemble_precision_recall_tab(self, source, metrics, model_dropdown, time_period_slider):
         precision_recall_f = figure(plot_width=700, plot_height=400, x_axis_type="datetime",
@@ -42,11 +44,13 @@ class ManagementDashboard(Dashboard):
         tp = df["tp"].sum()
         fp = df["fp"].sum()
         fn = df["fn"].sum()
+        threshold = df["threshold"].iloc[0]
         precision = tp / (tp + fp)
         recall = tp / (tp + fn)
         f1 = 2 * ((precision * recall) / (precision + recall))
         sample_size = df["sample_size"].sum()
-        return pd.DataFrame({"precision": precision, "recall": recall, "f1_score": f1, "sample_size": sample_size},
+        return pd.DataFrame({"precision": precision, "recall": recall, "f1_score": f1, "sample_size": sample_size,
+                             "threshold": threshold},
                             index=[0])
 
     def assemble_metric_comparison_table(self, daily_metrics, model_dropdown, time_period_slider):
@@ -61,17 +65,19 @@ class ManagementDashboard(Dashboard):
             TableColumn(field="precision", title="Precision"),
             TableColumn(field="recall", title="Recall"),
             TableColumn(field="f1_score", title="F1 Score"),
-            TableColumn(field="sample_size", title="Sample Size")
+            TableColumn(field="sample_size", title="Sample Size"),
+            TableColumn(field="threshold", title="Threshold")
         ]
 
         data_table = DataTable(source=source, columns=columns, width=600, height=280)
         title_div = Div()
-        title_div.text = "Precision, Recall, F1 Score and Sample Size for <strong>{}</strong>".format(model)
+        title_div.text = "Precision, Recall, F1 Score, Sample Size and Threshold for <strong>{}</strong>".format(model)
 
         def update(attr, old, new):
             model = model_dropdown.value
             date_start, date_end = time_period_slider.value_as_datetime
-            title_div.text = "Precision, Recall, F1 Score and Sample Size for <strong>{}</strong>".format(model)
+            title_div.text = "Precision, Recall, F1 Score, Sample Size and Threshold for <strong>{}</strong>".format(
+                model)
             model_metrics = daily_metrics[model][date_start:date_end]
             source.data = ColumnDataSource.from_df(self._calculate_metrics(model_metrics))
 

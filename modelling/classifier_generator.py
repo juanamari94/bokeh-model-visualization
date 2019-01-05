@@ -1,15 +1,26 @@
-import numpy as np
-from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
+import logging
+import time
+import pandas as pd
 
-DEFAULT_SCORING_FUNC = lambda tp, fp: tp / (6 * fp + tp)
+import numpy as np
+from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score, precision_recall_curve, roc_curve
+from sklearn.model_selection import KFold
+
+
+def DEFAULT_SCORING_FUNC(tp, fp):
+    return tp / (6 * fp + tp)
+
+
+logger = logging.getLogger("ModelLogger")
 
 
 class ClassifierGenerator:
 
     def __init__(self, name, clf, train, test, label_col="label", params=None):
         self.name = name
+        self.params = params
         if params:
-            self.clf = clf(**params)
+            self.clf = clf(**self.params)
         else:
             self.clf = clf()
         self.train = train
@@ -51,8 +62,44 @@ class ClassifierGenerator:
         probas = self.clf.predict_proba(X)
         return [0 if proba < threshold else 1 for proba in probas[:, 1]]
 
+    def predict_proba(self, X):
+        probas = self.clf.predict_proba(X)[:, 1]
+        res = pd.DataFrame(index=self.test.index, data={"probas": probas})
+        return res
+
     def best_threshold_for_scoring_func(self, X, y, scoring_func=DEFAULT_SCORING_FUNC, thresholds=np.arange(0, 1, 0.1)):
         metrics = {thresh: self.calculate_metrics_for_threshold(X, y, scoring_func, thresh)
                    for thresh in thresholds}
         best_threshold = max(metrics, key=lambda x: metrics[x]["scoring_func_score"])
         return best_threshold
+
+    def generate_curve_metrics(self):
+        probas = self.clf.predict_proba(self.X_test)[:, 1]
+        precision_recall_crv = precision_recall_curve(self.y_test, probas)
+        roc_crv = roc_curve(self.y_test, probas)
+        return {"precision_recall_curve": precision_recall_crv, "roc_curve": roc_crv}
+
+    def generate_feature_importances(self):
+        feature_names = self.X_train.columns
+        feature_importances = self.clf.feature_importances_
+        return pd.DataFrame({"name": feature_names, "importance": feature_importances})
+
+    def generate_score_distributions(self, dataset, label_col, seed=1):
+        n_splits = len(dataset) // 100
+        kf = KFold(n_splits=n_splits, random_state=seed, shuffle=False)
+        logger.info("Using {} splits".format(n_splits))
+        scores = []
+        dataset = dataset.drop_duplicates()
+        for i, indices in enumerate(kf.split(dataset)):
+            train_index, test_index = indices[0], indices[1]
+            X = dataset.drop(columns=[label_col])
+            y = dataset[label_col]
+            logger.info("Iteration {}".format(i))
+            start = time.monotonic()
+            clf = self.clf.__class__(**self.params)
+            clf.fit(X.iloc[train_index], y.iloc[train_index])
+            end = time.monotonic()
+            logger.debug("Iteration {} finished, time: {:0.3f} seconds".format(i, end - start))
+            scores.extend(clf.predict_proba(X.iloc[test_index])[:, 1])
+        logger.info("Length of the distribution: {}".format(len(scores)))
+        return scores
